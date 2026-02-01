@@ -43,6 +43,7 @@ export type Theme = {
   readonly info: RGBA
   readonly text: RGBA
   readonly textMuted: RGBA
+  readonly toolOutputText: RGBA
   readonly selectedListItemText: RGBA
   readonly background: RGBA
   readonly backgroundPanel: RGBA
@@ -120,9 +121,10 @@ type ColorValue = HexColor | RefName | Variant | RGBA
 export type ThemeJson = {
   $schema?: string
   defs?: Record<string, HexColor | RefName>
-  theme: Omit<Record<ThemeColor, ColorValue>, "selectedListItemText" | "backgroundMenu"> & {
+  theme: Omit<Record<ThemeColor, ColorValue>, "selectedListItemText" | "backgroundMenu" | "toolOutputText"> & {
     selectedListItemText?: ColorValue
     backgroundMenu?: ColorValue
+    toolOutputText?: ColorValue
     thinkingOpacity?: number
   }
 }
@@ -265,7 +267,7 @@ export function resolveTheme(theme: ThemeJson, mode: "dark" | "light") {
 
   const resolved = Object.fromEntries(
     Object.entries(theme.theme)
-      .filter(([key]) => key !== "selectedListItemText" && key !== "backgroundMenu" && key !== "thinkingOpacity")
+      .filter(([key]) => key !== "selectedListItemText" && key !== "backgroundMenu" && key !== "toolOutputText" && key !== "thinkingOpacity")
       .map(([key, value]) => {
         return [key, resolveColor(value as ColorValue)]
       }),
@@ -286,6 +288,13 @@ export function resolveTheme(theme: ThemeJson, mode: "dark" | "light") {
     resolved.backgroundMenu = resolveColor(theme.theme.backgroundMenu)
   } else {
     resolved.backgroundMenu = resolved.backgroundElement
+  }
+
+  // Handle toolOutputText - optional with fallback to text
+  if (theme.theme.toolOutputText !== undefined) {
+    resolved.toolOutputText = resolveColor(theme.theme.toolOutputText)
+  } else {
+    resolved.toolOutputText = resolved.text
   }
 
   // Handle thinkingOpacity - optional with default of 0.6
