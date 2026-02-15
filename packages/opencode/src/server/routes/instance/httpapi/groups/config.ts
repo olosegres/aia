@@ -1,6 +1,8 @@
 import { Config } from "@/config/config"
 import { ConfigV1 } from "@opencode-ai/core/v1/config/config"
+import { ModelV2, ProviderV2 } from "@opencode-ai/core/provider"
 import { Provider } from "@/provider/provider"
+import { Schema } from "effect"
 import { HttpApi, HttpApiEndpoint, HttpApiError, HttpApiGroup, OpenApi } from "effect/unstable/httpapi"
 import { Authorization } from "../middleware/authorization"
 import { InstanceContextMiddleware } from "../middleware/instance-context"
@@ -8,6 +10,15 @@ import { WorkspaceRoutingMiddleware, WorkspaceRoutingQuery } from "../middleware
 import { described } from "./metadata"
 
 const root = "/config"
+const Info = Schema.Struct({
+  ...ConfigV1.Info.fields,
+  defaultModel: Schema.optional(
+    Schema.Struct({
+      providerID: ProviderV2.ID,
+      modelID: ModelV2.ID,
+    }),
+  ),
+})
 
 export const ConfigApi = HttpApi.make("config")
   .add(
@@ -15,7 +26,7 @@ export const ConfigApi = HttpApi.make("config")
       .add(
         HttpApiEndpoint.get("get", root, {
           query: WorkspaceRoutingQuery,
-          success: described(ConfigV1.Info, "Get config info"),
+          success: described(Info, "Get config info"),
         }).annotateMerge(
           OpenApi.annotations({
             identifier: "config.get",
