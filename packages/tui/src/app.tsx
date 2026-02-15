@@ -46,6 +46,7 @@ import { DialogStatus } from "./component/dialog-status"
 import { DialogDebug } from "./component/dialog-debug"
 import { DialogThemeList } from "./component/dialog-theme-list"
 import { DialogHelp } from "./ui/dialog-help"
+import { DialogSelect } from "./ui/dialog-select"
 import { DialogAgent } from "./component/dialog-agent"
 import { DialogSessionList } from "./component/dialog-session-list"
 import { DialogWorkspaceList } from "./component/dialog-workspace-list"
@@ -897,6 +898,44 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         run: () => {
           kv.set("animations_enabled", !kv.get("animations_enabled", true))
           dialog.clear()
+        },
+      },
+      {
+        name: "app.indicator.style",
+        title: "Status indicator style",
+        category: "System",
+        run: () => {
+          const current = kv.get("indicator_style", "pulsatingCircle")
+          const options = [
+            {
+              value: "pulsatingCircle",
+              title: "●  Pulsating circle",
+              description: current === "pulsatingCircle" ? "current" : undefined,
+              onSelect: () => {
+                kv.set("indicator_style", "pulsatingCircle")
+                dialog.clear()
+              },
+            },
+            {
+              value: "blocks",
+              title: "■  Blocks scanner",
+              description: current === "blocks" ? "current" : undefined,
+              onSelect: () => {
+                kv.set("indicator_style", "blocks")
+                dialog.clear()
+              },
+            },
+            {
+              value: "diamonds",
+              title: "◆  Diamonds scanner",
+              description: current === "diamonds" ? "current" : undefined,
+              onSelect: () => {
+                kv.set("indicator_style", "diamonds")
+                dialog.clear()
+              },
+            },
+          ]
+          dialog.replace(() => <DialogSelect title="Status Indicator Style" options={options} />)
         },
       },
       {
