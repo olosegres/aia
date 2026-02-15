@@ -12,7 +12,9 @@ export const configHandlers = HttpApiBuilder.group(InstanceHttpApi, "config", (h
     const configSvc = yield* Config.Service
 
     const get = Effect.fn("ConfigHttpApi.get")(function* () {
-      return yield* configSvc.get()
+      const config = yield* configSvc.get()
+      const defaultModel = yield* providerSvc.defaultModel().pipe(Effect.catch(() => Effect.succeed(undefined)))
+      return { ...config, defaultModel }
     })
 
     const update = Effect.fn("ConfigHttpApi.update")(function* (ctx) {
