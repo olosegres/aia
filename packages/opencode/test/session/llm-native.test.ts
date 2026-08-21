@@ -733,7 +733,7 @@ describe("session.llm-native.request", () => {
         llmClient,
         messages: [{ role: "user", content: "hello" }],
         tools: {},
-        providerOptions: { instructions: "You are concise." },
+        providerOptions: { instructions: "You are concise.", promptCacheKey: "cache-root" },
         headers: {},
         abort: new AbortController().signal,
       })
@@ -748,6 +748,7 @@ describe("session.llm-native.request", () => {
           model: "gpt-5-mini",
           instructions: "You are concise.",
           input: [{ role: "user", content: [{ type: "input_text", text: "hello" }] }],
+          prompt_cache_key: "cache-root",
         },
       })
       expect(events).toEqual(

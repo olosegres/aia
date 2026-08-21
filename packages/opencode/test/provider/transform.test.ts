@@ -48,7 +48,7 @@ describe("ProviderTransform.options - setCacheKey", () => {
   test("should set promptCacheKey when providerOptions.setCacheKey is true", () => {
     const result = ProviderTransform.options({
       model: mockModel,
-      sessionID,
+      cacheRootID: sessionID,
       providerOptions: { setCacheKey: true },
     })
     expect(result.promptCacheKey).toBe(sessionID)
@@ -57,7 +57,7 @@ describe("ProviderTransform.options - setCacheKey", () => {
   test("should not set promptCacheKey when providerOptions.setCacheKey is false", () => {
     const result = ProviderTransform.options({
       model: mockModel,
-      sessionID,
+      cacheRootID: sessionID,
       providerOptions: { setCacheKey: false },
     })
     expect(result.promptCacheKey).toBeUndefined()
@@ -66,14 +66,14 @@ describe("ProviderTransform.options - setCacheKey", () => {
   test("should not set promptCacheKey when providerOptions is undefined", () => {
     const result = ProviderTransform.options({
       model: mockModel,
-      sessionID,
+      cacheRootID: sessionID,
       providerOptions: undefined,
     })
     expect(result.promptCacheKey).toBeUndefined()
   })
 
   test("should not set promptCacheKey when providerOptions does not have setCacheKey", () => {
-    const result = ProviderTransform.options({ model: mockModel, sessionID, providerOptions: {} })
+    const result = ProviderTransform.options({ model: mockModel, cacheRootID: sessionID, providerOptions: {} })
     expect(result.promptCacheKey).toBeUndefined()
   })
 
@@ -87,7 +87,7 @@ describe("ProviderTransform.options - setCacheKey", () => {
         npm: "@ai-sdk/openai",
       },
     }
-    const result = ProviderTransform.options({ model: openaiModel, sessionID, providerOptions: {} })
+    const result = ProviderTransform.options({ model: openaiModel, cacheRootID: sessionID, providerOptions: {} })
     expect(result.promptCacheKey).toBe(sessionID)
   })
 
@@ -98,7 +98,7 @@ describe("ProviderTransform.options - setCacheKey", () => {
         providerID: "custom-openai",
         api: { id: "gpt-5", url: "https://example.com", npm: "@ai-sdk/openai" },
       },
-      sessionID,
+      cacheRootID: sessionID,
       providerOptions: {},
     })
     expect(result.promptCacheKey).toBe(sessionID)
@@ -111,7 +111,7 @@ describe("ProviderTransform.options - setCacheKey", () => {
         providerID: "openai",
         api: { id: "gpt-5", url: "https://example.com", npm: "@ai-sdk/openai-compatible" },
       },
-      sessionID,
+      cacheRootID: sessionID,
       providerOptions: {},
     })
     expect(result.promptCacheKey).toBeUndefined()
@@ -129,7 +129,7 @@ describe("ProviderTransform.options - setCacheKey", () => {
     }
     const result = ProviderTransform.options({
       model: openaiModel,
-      sessionID,
+      cacheRootID: sessionID,
       providerOptions: { setCacheKey: false },
     })
     expect(result.promptCacheKey).toBeUndefined()
@@ -145,7 +145,7 @@ describe("ProviderTransform.options - setCacheKey", () => {
         npm: "@ai-sdk/xai",
       },
     }
-    const result = ProviderTransform.options({ model: xaiModel, sessionID, providerOptions: {} })
+    const result = ProviderTransform.options({ model: xaiModel, cacheRootID: sessionID, providerOptions: {} })
     expect(result.promptCacheKey).toBe(sessionID)
   })
 
@@ -161,7 +161,7 @@ describe("ProviderTransform.options - setCacheKey", () => {
     }
     const result = ProviderTransform.options({
       model: xaiModel,
-      sessionID,
+      cacheRootID: sessionID,
       providerOptions: { setCacheKey: false },
     })
     expect(result.promptCacheKey).toBeUndefined()
@@ -179,7 +179,7 @@ describe("ProviderTransform.options - setCacheKey", () => {
     }
     const result = ProviderTransform.options({
       model: openaiModel,
-      sessionID,
+      cacheRootID: sessionID,
       providerOptions: {},
     })
     expect(result.store).toBe(false)
@@ -197,7 +197,7 @@ describe("ProviderTransform.options - setCacheKey", () => {
     }
     const result = ProviderTransform.options({
       model: xaiModel,
-      sessionID,
+      cacheRootID: sessionID,
       providerOptions: {},
     })
     expect(result.store).toBe(false)
@@ -216,7 +216,7 @@ describe("ProviderTransform.options - setCacheKey", () => {
     }
     const result = ProviderTransform.options({
       model: xaiModel,
-      sessionID,
+      cacheRootID: sessionID,
       providerOptions: {},
     })
     expect(result.store).toBe(false)
@@ -234,7 +234,7 @@ describe("ProviderTransform.options - setCacheKey", () => {
     }
     const result = ProviderTransform.options({
       model: azureModel,
-      sessionID,
+      cacheRootID: sessionID,
       providerOptions: {},
     })
     expect(result.store).toBe(false)
@@ -248,7 +248,7 @@ describe("ProviderTransform.options - setCacheKey", () => {
         providerID: "azure",
         api: { id: "gpt-5", url: "https://azure.com", npm: "@ai-sdk/azure" },
       },
-      sessionID,
+      cacheRootID: sessionID,
       providerOptions: { setCacheKey: false },
     })
     expect(result.store).toBe(false)
@@ -262,7 +262,7 @@ describe("ProviderTransform.options - setCacheKey", () => {
         providerID: "azure",
         api: { id: "gpt-5.5", url: "https://azure.com", npm: "@ai-sdk/azure" },
       },
-      sessionID,
+      cacheRootID: sessionID,
       providerOptions: {},
     })
     expect(result.store).toBe(false)
@@ -274,7 +274,7 @@ describe("ProviderTransform.options - setCacheKey", () => {
     test(`should set the snake-case cache key for ${npm}`, () => {
       const result = ProviderTransform.options({
         model: { ...mockModel, providerID: "custom", api: { ...mockModel.api, npm } },
-        sessionID,
+        cacheRootID: sessionID,
         providerOptions: {},
       })
       expect(result.prompt_cache_key).toBe(sessionID)
@@ -285,7 +285,7 @@ describe("ProviderTransform.options - setCacheKey", () => {
   test("should set promptCacheKey for the Mistral SDK", () => {
     const result = ProviderTransform.options({
       model: { ...mockModel, providerID: "custom", api: { ...mockModel.api, npm: "@ai-sdk/mistral" } },
-      sessionID,
+      cacheRootID: sessionID,
       providerOptions: {},
     })
     expect(result.promptCacheKey).toBe(sessionID)
@@ -298,7 +298,7 @@ describe("ProviderTransform.options - setCacheKey", () => {
         providerID: "openrouter",
         api: { ...mockModel.api, npm: "@openrouter/ai-sdk-provider" },
       },
-      sessionID,
+      cacheRootID: sessionID,
       providerOptions: {},
     })
     expect(result.prompt_cache_key).toBeUndefined()
@@ -345,7 +345,7 @@ describe("ProviderTransform.options - zai/zhipuai thinking", () => {
     test(`${providerID} should set thinking cfg`, () => {
       const result = ProviderTransform.options({
         model: createModel(providerID),
-        sessionID,
+        cacheRootID: sessionID,
         providerOptions: {},
       })
 
@@ -375,7 +375,7 @@ describe("ProviderTransform.options - minimax m3 thinking", () => {
     expect(
       ProviderTransform.options({
         model: createModel("@ai-sdk/anthropic"),
-        sessionID: "test-session-123",
+        cacheRootID: "test-session-123",
       }).thinking,
     ).toEqual({ type: "adaptive" })
   })
@@ -384,7 +384,7 @@ describe("ProviderTransform.options - minimax m3 thinking", () => {
     expect(
       ProviderTransform.options({
         model: createModel("@ai-sdk/openai-compatible"),
-        sessionID: "test-session-123",
+        cacheRootID: "test-session-123",
       }).thinking,
     ).toBeUndefined()
   })
@@ -429,7 +429,7 @@ describe("ProviderTransform.options - google thinkingConfig gating", () => {
   test("does not set thinkingConfig for google models without reasoning capability", () => {
     const result = ProviderTransform.options({
       model: createGoogleModel(false, "@ai-sdk/google"),
-      sessionID,
+      cacheRootID: sessionID,
       providerOptions: {},
     })
     expect(result.thinkingConfig).toBeUndefined()
@@ -438,7 +438,7 @@ describe("ProviderTransform.options - google thinkingConfig gating", () => {
   test("sets thinkingConfig for google models with reasoning capability", () => {
     const result = ProviderTransform.options({
       model: createGoogleModel(true, "@ai-sdk/google"),
-      sessionID,
+      cacheRootID: sessionID,
       providerOptions: {},
     })
     expect(result.thinkingConfig).toEqual({
@@ -449,7 +449,7 @@ describe("ProviderTransform.options - google thinkingConfig gating", () => {
   test("does not set thinkingConfig for vertex models without reasoning capability", () => {
     const result = ProviderTransform.options({
       model: createGoogleModel(false, "@ai-sdk/google-vertex"),
-      sessionID,
+      cacheRootID: sessionID,
       providerOptions: {},
     })
     expect(result.thinkingConfig).toBeUndefined()
@@ -487,7 +487,7 @@ describe("ProviderTransform.options - gpt-5 textVerbosity", () => {
 
   test("gpt-5.2 should have textVerbosity set to low", () => {
     const model = createGpt5Model("gpt-5.2")
-    const result = ProviderTransform.options({ model, sessionID, providerOptions: {} })
+    const result = ProviderTransform.options({ model, cacheRootID: sessionID, providerOptions: {} })
     expect(result.textVerbosity).toBe("low")
     expect(result.include).toEqual(["reasoning.encrypted_content"])
   })
@@ -503,7 +503,7 @@ describe("ProviderTransform.options - gpt-5 textVerbosity", () => {
         npm: "@ai-sdk/amazon-bedrock/mantle",
       },
     }
-    const result = ProviderTransform.options({ model, sessionID, providerOptions: {} })
+    const result = ProviderTransform.options({ model, cacheRootID: sessionID, providerOptions: {} })
     expect(result.store).toBe(false)
     expect(result.reasoningEffort).toBe("medium")
     expect(result.reasoningSummary).toBe("auto")
@@ -522,7 +522,7 @@ describe("ProviderTransform.options - gpt-5 textVerbosity", () => {
         npm: "@ai-sdk/openai-compatible",
       },
     }
-    const result = ProviderTransform.options({ model, sessionID, providerOptions: {} })
+    const result = ProviderTransform.options({ model, cacheRootID: sessionID, providerOptions: {} })
     expect(result.reasoningEffort).toBe("medium")
     expect(result.reasoningSummary).toBeUndefined()
     expect(result.include).toBeUndefined()
@@ -558,6 +558,7 @@ describe("ProviderTransform.options - gpt-5 textVerbosity", () => {
           model: { providerID: "azure", modelID: "gpt-5.4", variant: "high" },
         } as any,
         sessionID,
+        cacheRootID: sessionID,
         model,
         agent: {
           name: "test",
@@ -590,39 +591,156 @@ describe("ProviderTransform.options - gpt-5 textVerbosity", () => {
     expect(result.tools.lookup.strict).toBe(false)
   })
 
+  test("keeps the stable agent prompt separate from dynamic and plugin system context", async () => {
+    const model = createGpt5Model("gpt-5.4")
+    const cacheRootID = `ses_${"a".repeat(64)}`
+    const result = await Effect.runPromise(
+      LLMRequestPrep.prepare({
+        user: {
+          id: "msg_user-system-layers",
+          sessionID,
+          role: "user",
+          time: { created: Date.now() },
+          agent: "test",
+          model: { providerID: "openai", modelID: "gpt-5.4" },
+          system: "User system context",
+        } as any,
+        sessionID,
+        cacheRootID,
+        model,
+        agent: {
+          name: "test",
+          mode: "primary",
+          prompt: "Stable agent prompt",
+          options: {},
+          permission: [],
+        } as any,
+        system: ["Environment", "Project instructions", "MCP context", "Skill guidance"],
+        messages: [{ role: "user", content: "Hello" }],
+        tools: {},
+        provider: { id: "openai", options: {} } as any,
+        auth: undefined,
+        plugin: {
+          trigger: (name: string, _input: unknown, output: unknown) => {
+            if (name === "experimental.chat.system.transform") {
+              const system = (output as { system: string[] }).system
+              system[0] = "Transformed stable agent prompt"
+              system.push("Plugin context")
+            }
+            return Effect.succeed(output)
+          },
+          list: () => Effect.succeed([]),
+          init: () => Effect.void,
+        } as any,
+        flags: { outputTokenMax: 32_000, client: "test" } as any,
+        isWorkflow: false,
+      }),
+    )
+
+    expect(result.system).toEqual([
+      "Transformed stable agent prompt",
+      "Environment\nProject instructions\nMCP context\nSkill guidance\nUser system context\nPlugin context",
+    ])
+    expect(result.messages.slice(0, 2)).toEqual([
+      { role: "system", content: "Transformed stable agent prompt" },
+      {
+        role: "system",
+        content: "Environment\nProject instructions\nMCP context\nSkill guidance\nUser system context\nPlugin context",
+      },
+    ])
+    expect(result.params.options.promptCacheKey).toBe("a".repeat(64))
+    expect(result.headers).toMatchObject({ "x-session-affinity": sessionID, "X-Session-Id": sessionID })
+  })
+
+  test("keeps split system instructions intact for OpenAI OAuth and workflow models", async () => {
+    const model = createGpt5Model("gpt-5.4")
+    for (const input of [
+      {
+        name: "oauth",
+        auth: { type: "oauth", refresh: "refresh", access: "access", expires: Date.now() + 60_000 } as const,
+        isWorkflow: false,
+      },
+      { name: "workflow", auth: undefined, isWorkflow: true },
+    ]) {
+      const result = await Effect.runPromise(
+        LLMRequestPrep.prepare({
+          user: {
+            id: `msg_user-system-${input.name}`,
+            sessionID,
+            role: "user",
+            time: { created: Date.now() },
+            agent: "test",
+            model: { providerID: "openai", modelID: "gpt-5.4" },
+            system: "User system context",
+          } as any,
+          sessionID,
+          cacheRootID: "cache-root",
+          model,
+          agent: {
+            name: "test",
+            mode: "primary",
+            prompt: "Stable agent prompt",
+            options: {},
+            permission: [],
+          } as any,
+          system: ["Dynamic context"],
+          messages: [{ role: "user", content: "Hello" }],
+          tools: {},
+          provider: { id: "openai", options: {} } as any,
+          auth: input.auth,
+          plugin: {
+            trigger: (_name: string, _input: unknown, output: unknown) => Effect.succeed(output),
+            list: () => Effect.succeed([]),
+            init: () => Effect.void,
+          } as any,
+          flags: { outputTokenMax: 32_000, client: "test" } as any,
+          isWorkflow: input.isWorkflow,
+        }),
+      )
+
+      expect(result.system).toEqual(["Stable agent prompt", "Dynamic context\nUser system context"])
+      expect(result.messages).toEqual([{ role: "user", content: "Hello" }])
+      if (input.name === "oauth") {
+        expect(result.params.options.instructions).toBe(
+          "Stable agent prompt\nDynamic context\nUser system context",
+        )
+      }
+    }
+  })
+
   test("gpt-5.1 should have textVerbosity set to low", () => {
     const model = createGpt5Model("gpt-5.1")
-    const result = ProviderTransform.options({ model, sessionID, providerOptions: {} })
+    const result = ProviderTransform.options({ model, cacheRootID: sessionID, providerOptions: {} })
     expect(result.textVerbosity).toBe("low")
   })
 
   test("gpt-5.2-chat-latest should NOT have textVerbosity set (only supports medium)", () => {
     const model = createGpt5Model("gpt-5.2-chat-latest")
-    const result = ProviderTransform.options({ model, sessionID, providerOptions: {} })
+    const result = ProviderTransform.options({ model, cacheRootID: sessionID, providerOptions: {} })
     expect(result.textVerbosity).toBeUndefined()
   })
 
   test("gpt-5.1-chat-latest should NOT have textVerbosity set (only supports medium)", () => {
     const model = createGpt5Model("gpt-5.1-chat-latest")
-    const result = ProviderTransform.options({ model, sessionID, providerOptions: {} })
+    const result = ProviderTransform.options({ model, cacheRootID: sessionID, providerOptions: {} })
     expect(result.textVerbosity).toBeUndefined()
   })
 
   test("gpt-5.2-chat should NOT have textVerbosity set", () => {
     const model = createGpt5Model("gpt-5.2-chat")
-    const result = ProviderTransform.options({ model, sessionID, providerOptions: {} })
+    const result = ProviderTransform.options({ model, cacheRootID: sessionID, providerOptions: {} })
     expect(result.textVerbosity).toBeUndefined()
   })
 
   test("gpt-5-chat should NOT have textVerbosity set", () => {
     const model = createGpt5Model("gpt-5-chat")
-    const result = ProviderTransform.options({ model, sessionID, providerOptions: {} })
+    const result = ProviderTransform.options({ model, cacheRootID: sessionID, providerOptions: {} })
     expect(result.textVerbosity).toBeUndefined()
   })
 
   test("gpt-5.2-codex should NOT have textVerbosity set (codex models excluded)", () => {
     const model = createGpt5Model("gpt-5.2-codex")
-    const result = ProviderTransform.options({ model, sessionID, providerOptions: {} })
+    const result = ProviderTransform.options({ model, cacheRootID: sessionID, providerOptions: {} })
     expect(result.textVerbosity).toBeUndefined()
   })
 })
@@ -678,7 +796,7 @@ describe("ProviderTransform.options - gpt-5 reasoningEffort", () => {
   test("gpt-5-chat should NOT set reasoningEffort", () => {
     const result = ProviderTransform.options({
       model: createModel("gpt-5-chat"),
-      sessionID,
+      cacheRootID: sessionID,
       providerOptions: {},
     })
 
@@ -688,7 +806,7 @@ describe("ProviderTransform.options - gpt-5 reasoningEffort", () => {
   test("gpt-5.5 should NOT set reasoningEffort for the completions API", () => {
     const result = ProviderTransform.options({
       model: createModel("gpt-5.5"),
-      sessionID,
+      cacheRootID: sessionID,
       providerOptions: { useCompletionUrls: true },
     })
 
@@ -698,7 +816,7 @@ describe("ProviderTransform.options - gpt-5 reasoningEffort", () => {
   test("gpt-5.6 should NOT set reasoningEffort for the completions API", () => {
     const result = ProviderTransform.options({
       model: createModel("gpt-5.6"),
-      sessionID,
+      cacheRootID: sessionID,
       providerOptions: { useCompletionUrls: true },
     })
 
@@ -708,7 +826,7 @@ describe("ProviderTransform.options - gpt-5 reasoningEffort", () => {
   test("gpt-5.6 should set reasoningEffort for the responses API", () => {
     const result = ProviderTransform.options({
       model: createModel("gpt-5.6"),
-      sessionID,
+      cacheRootID: sessionID,
       providerOptions: {},
     })
 
@@ -755,7 +873,7 @@ describe("ProviderTransform.options - gateway", () => {
 
   test("puts gateway defaults under gateway key", () => {
     const model = createModel("anthropic/claude-sonnet-4")
-    const result = ProviderTransform.options({ model, sessionID, providerOptions: {} })
+    const result = ProviderTransform.options({ model, cacheRootID: sessionID, providerOptions: {} })
     expect(result).toEqual({
       gateway: {
         caching: "auto",
@@ -6147,7 +6265,7 @@ describe("ProviderTransform.options - kimi family adaptive thinking", () => {
     }) as any
 
   test("uses adaptive thinking with effort instead of budget tokens", () => {
-    const result = ProviderTransform.options({ model: createModel(), sessionID: "s1", providerOptions: {} })
+    const result = ProviderTransform.options({ model: createModel(), cacheRootID: "s1", providerOptions: {} })
     expect(result.thinking).toEqual({ type: "adaptive", display: "summarized" })
     expect(result.effort).toBe("high")
     expect(JSON.stringify(result)).not.toContain("budgetTokens")
@@ -6156,7 +6274,7 @@ describe("ProviderTransform.options - kimi family adaptive thinking", () => {
   test("uses adaptive thinking through Google Vertex Anthropic", () => {
     const model = createModel()
     model.api.npm = "@ai-sdk/google-vertex/anthropic"
-    const result = ProviderTransform.options({ model, sessionID: "s1", providerOptions: {} })
+    const result = ProviderTransform.options({ model, cacheRootID: "s1", providerOptions: {} })
     expect(result.thinking).toEqual({ type: "adaptive", display: "summarized" })
     expect(result.effort).toBe("high")
   })
@@ -6179,7 +6297,7 @@ describe("ProviderTransform.options - kimi family adaptive thinking", () => {
   test("does not enable thinking for kimi models without reasoning capability", () => {
     const model = createModel()
     model.capabilities.reasoning = false
-    const result = ProviderTransform.options({ model, sessionID: "s1", providerOptions: {} })
+    const result = ProviderTransform.options({ model, cacheRootID: "s1", providerOptions: {} })
     expect(result.thinking).toBeUndefined()
   })
 
@@ -6193,7 +6311,7 @@ describe("ProviderTransform.options - kimi family adaptive thinking", () => {
         npm: "@ai-sdk/anthropic",
       },
     })
-    const result = ProviderTransform.options({ model, sessionID: "s1", providerOptions: {} })
+    const result = ProviderTransform.options({ model, cacheRootID: "s1", providerOptions: {} })
     expect(result.thinking).toBeUndefined()
     expect(result.effort).toBeUndefined()
   })
@@ -6205,7 +6323,7 @@ describe("ProviderTransform.options - kimi family adaptive thinking", () => {
       url: "https://api.moonshot.ai/v1",
       npm: "@ai-sdk/openai-compatible",
     }
-    const result = ProviderTransform.options({ model, sessionID: "s1", providerOptions: {} })
+    const result = ProviderTransform.options({ model, cacheRootID: "s1", providerOptions: {} })
     expect(result.thinking).toBeUndefined()
   })
 })

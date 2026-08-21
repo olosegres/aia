@@ -4,6 +4,7 @@ import type { JSONSchema7 } from "@ai-sdk/provider"
 import type * as Provider from "./provider"
 import type * as ModelsDev from "@opencode-ai/core/models-dev"
 import { iife } from "@/util/iife"
+import { SessionCache } from "@opencode-ai/core/session/cache"
 
 type Modality = NonNullable<ModelsDev.Model["modalities"]>["input"][number]
 
@@ -1206,10 +1207,11 @@ export function variants(model: Provider.Model): Record<string, Record<string, a
 
 export function options(input: {
   model: Provider.Model
-  sessionID: string
+  cacheRootID: string
   providerOptions?: Record<string, any>
 }): Record<string, any> {
   const result: Record<string, any> = {}
+  const promptCacheKey = SessionCache.promptKey(input.cacheRootID)
 
   if (
     input.model.api.npm === "@ai-sdk/google-vertex/anthropic" ||
@@ -1309,7 +1311,7 @@ export function options(input: {
 
   if (input.providerOptions?.setCacheKey !== false) {
     if (input.model.api.npm === "@ai-sdk/deepinfra" || input.model.api.npm === "@ai-sdk/cerebras") {
-      result["prompt_cache_key"] = input.sessionID
+      result["prompt_cache_key"] = promptCacheKey
     } else if (
       input.model.api.npm === "@ai-sdk/openai" ||
       input.model.api.npm === "@ai-sdk/azure" ||
@@ -1318,7 +1320,7 @@ export function options(input: {
       input.model.api.npm === "venice-ai-sdk-provider" ||
       input.providerOptions?.setCacheKey === true
     ) {
-      result["promptCacheKey"] = input.sessionID
+      result["promptCacheKey"] = promptCacheKey
     }
   }
 
@@ -1365,7 +1367,7 @@ export function options(input: {
     }
 
     if (input.model.providerID.startsWith("opencode") && input.providerOptions?.setCacheKey !== false) {
-      result["promptCacheKey"] = input.sessionID
+      result["promptCacheKey"] = promptCacheKey
       result["include"] = INCLUDE_ENCRYPTED_REASONING
       result["reasoningSummary"] = "auto"
     }

@@ -417,6 +417,7 @@ const layer = Layer.effect(
         },
       }
       yield* session.updateMessage(msg)
+      const cacheRootID = yield* session.cacheRootID(input.sessionID).pipe(Effect.orDie)
       const processor = yield* processors.create({
         assistantMessage: msg,
         sessionID: input.sessionID,
@@ -426,6 +427,7 @@ const layer = Layer.effect(
         user: userMessage,
         agent,
         sessionID: input.sessionID,
+        cacheRootID,
         tools: {},
         system: [],
         messages: [

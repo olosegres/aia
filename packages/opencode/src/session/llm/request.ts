@@ -20,6 +20,7 @@ const USER_AGENT = `opencode/${InstallationVersion}`
 type PrepareInput = {
   readonly user: SessionV1.User
   readonly sessionID: string
+  readonly cacheRootID?: string
   readonly parentSessionID?: string
   readonly model: Provider.Model
   readonly agent: Agent.Info
@@ -56,22 +57,17 @@ const mergeOptions = (target: Record<string, any>, source: Record<string, any> |
 export const prepare = Effect.fn("LLMRequestPrep.prepare")(function* (input: PrepareInput) {
   const isOpenaiOauth = input.provider.id === "openai" && input.auth?.type === "oauth"
   const system = [
-    [
-      ...(input.agent.prompt ? [input.agent.prompt] : SystemPrompt.provider(input.model)),
-      ...input.system,
-      ...(input.user.system ? [input.user.system] : []),
-    ]
-      .filter((x) => x)
-      .join("\n"),
-  ]
+    [...(input.agent.prompt ? [input.agent.prompt] : SystemPrompt.provider(input.model))].filter((x) => x).join("\n"),
+    [...input.system, ...(input.user.system ? [input.user.system] : [])].filter((x) => x).join("\n"),
+  ].filter((x) => x)
 
-  const header = system[0]
   yield* input.plugin.trigger(
     "experimental.chat.system.transform",
     { sessionID: input.sessionID, model: input.model },
     { system },
   )
-  if (system.length > 2 && system[0] === header) {
+  if (system.length > 2) {
+    const header = system[0]!
     const rest = system.slice(1)
     system.length = 0
     system.push(header, rest.join("\n"))
@@ -82,12 +78,12 @@ export const prepare = Effect.fn("LLMRequestPrep.prepare")(function* (input: Pre
       ? input.model.variants[input.user.model.variant]
       : {}
   const base = input.small
-    ? ProviderTransform.smallOptions(input.model)
-    : ProviderTransform.options({
-        model: input.model,
-        sessionID: input.sessionID,
-        providerOptions: input.provider.options,
-      })
+      ? ProviderTransform.smallOptions(input.model)
+      : ProviderTransform.options({
+          model: input.model,
+          cacheRootID: input.cacheRootID ?? input.sessionID,
+          providerOptions: input.provider.options,
+        })
   const options = mergeOptions(mergeOptions(mergeOptions(base, input.model.options), input.agent.options), variant)
   if (
     input.model.api.npm === "@ai-sdk/azure" &&

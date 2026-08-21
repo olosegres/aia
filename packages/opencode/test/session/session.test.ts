@@ -238,6 +238,29 @@ describe("Session", () => {
     }),
   )
 
+  it.instance("inherits cache roots across forks while ordinary child sessions remain isolated", () =>
+    Effect.gen(function* () {
+      const session = yield* SessionNs.Service
+      const source = yield* Effect.acquireRelease(session.create({ title: "cache source" }), (info) =>
+        session.remove(info.id).pipe(Effect.ignore),
+      )
+      const child = yield* session.create({ parentID: source.id })
+
+      expect(yield* session.cacheRootID(source.id)).toBe(source.id)
+      expect(yield* session.cacheRootID(child.id)).toBe(child.id)
+
+      const fork = yield* Effect.acquireRelease(session.fork({ sessionID: source.id }), (info) =>
+        session.remove(info.id).pipe(Effect.ignore),
+      )
+      const nestedFork = yield* Effect.acquireRelease(session.fork({ sessionID: fork.id }), (info) =>
+        session.remove(info.id).pipe(Effect.ignore),
+      )
+
+      expect(yield* session.cacheRootID(fork.id)).toBe(source.id)
+      expect(yield* session.cacheRootID(nestedFork.id)).toBe(source.id)
+    }),
+  )
+
   it.instance("forks the chronological prefix across mixed message ID ordering", () =>
     Effect.gen(function* () {
       const session = yield* SessionNs.Service

@@ -47,6 +47,7 @@ export const projectCopyHandlers = HttpApiBuilder.group(InstanceHttpApi, "projec
           tools: {},
           model,
           sessionID,
+          cacheRootID: sessionID,
           retries: 2,
           messages: [{ role: "user", content: `Generate a short 2-3 word name that describes this task:\n${text}` }],
         })

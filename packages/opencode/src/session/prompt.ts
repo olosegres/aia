@@ -10,7 +10,7 @@ import { Session } from "./session"
 import { Agent } from "../agent/agent"
 import { Provider } from "@/provider/provider"
 
-import { type Tool as AITool, tool, jsonSchema } from "ai"
+import { type ModelMessage, type Tool as AITool, tool, jsonSchema } from "ai"
 import type { JSONSchema7 } from "@ai-sdk/provider"
 import { SessionCompaction } from "./compaction"
 import { SystemPrompt } from "./system"
@@ -98,6 +98,40 @@ function isOrphanedInterruptedTool(part: SessionV1.ToolPart) {
   // They are not pending work and must not trigger an assistant-prefill request.
   return part.state.status === "error" && part.state.metadata?.interrupted === true
 }
+
+export type PromptModelSnapshot = {
+  readonly modelKey: string
+  readonly sourceMessageIDs: MessageID[]
+  readonly modelMessages: ModelMessage[]
+}
+
+function promptModelKey(model: Provider.Model) {
+  return `${model.providerID}/${model.id}`
+}
+
+export const appendOnlyModelMessages = Effect.fnUntraced(function* (input: {
+  readonly snapshot: PromptModelSnapshot | undefined
+  readonly messages: SessionV1.WithParts[]
+  readonly model: Provider.Model
+}) {
+  const modelKey = promptModelKey(input.model)
+  const sourceMessageIDs = input.messages.map((message) => message.info.id)
+  const append =
+    input.snapshot?.modelKey === modelKey &&
+    input.snapshot.sourceMessageIDs.length <= sourceMessageIDs.length &&
+    input.snapshot.sourceMessageIDs.every((id, index) => sourceMessageIDs[index] === id)
+  const suffix = append ? input.messages.slice(input.snapshot.sourceMessageIDs.length) : input.messages
+  const converted = yield* MessageV2.toModelMessagesEffect(suffix, input.model)
+  const modelMessages = append ? [...structuredClone(input.snapshot.modelMessages), ...converted] : converted
+  return {
+    modelMessages,
+    snapshot: {
+      modelKey,
+      sourceMessageIDs,
+      modelMessages: structuredClone(modelMessages),
+    } satisfies PromptModelSnapshot,
+  }
+})
 
 export interface Interface {
   readonly cancel: (sessionID: SessionID) => Effect.Effect<void>
@@ -192,6 +226,7 @@ const layer = Layer.effect(
 
     const title = Effect.fn("SessionPrompt.ensureTitle")(function* (input: {
       session: Session.Info
+      cacheRootID: SessionID
       history: SessionV1.WithParts[]
       providerID: ProviderV2.ID
       modelID: ModelV2.ID
@@ -231,6 +266,7 @@ const layer = Layer.effect(
           tools: {},
           model: mdl,
           sessionID: input.session.id,
+          cacheRootID: input.cacheRootID,
           retries: 2,
           messages: [{ role: "user", content: "Generate a title for this conversation:\n" }, ...msgs],
         })
@@ -1083,7 +1119,9 @@ const layer = Layer.effect(
         const ctx = yield* InstanceState.context
         let structured: unknown
         let step = 0
+        let promptSnapshot: PromptModelSnapshot | undefined
         const session = yield* sessions.get(sessionID).pipe(Effect.orDie)
+        const cacheRootID = yield* sessions.cacheRootID(sessionID).pipe(Effect.orDie)
 
         while (true) {
           yield* status.set(sessionID, { type: "busy" })
@@ -1133,6 +1171,7 @@ const layer = Layer.effect(
           if (step === 1)
             yield* title({
               session,
+              cacheRootID,
               modelID: lastUser.model.modelID,
               providerID: lastUser.model.providerID,
               history: msgs,
@@ -1143,10 +1182,12 @@ const layer = Layer.effect(
 
           if (task?.type === "subtask") {
             yield* handleSubtask({ task, model, lastUser, sessionID, session, msgs })
+            promptSnapshot = undefined
             continue
           }
 
           if (task?.type === "compaction") {
+            promptSnapshot = undefined
             const result = yield* compaction.process({
               messages: msgs,
               parentID: lastUser.id,
@@ -1164,6 +1205,7 @@ const layer = Layer.effect(
             (yield* compaction.isOverflow({ tokens: lastFinished.tokens, model }))
           ) {
             yield* compaction.create({ sessionID, agent: lastUser.agent, model: lastUser.model, auto: true })
+            promptSnapshot = undefined
             continue
           }
 
@@ -1254,13 +1296,14 @@ const layer = Layer.effect(
 
             yield* plugin.trigger("experimental.chat.messages.transform", {}, { messages: msgs })
 
-            const [skills, env, instructions, mcpInstructions, modelMsgs] = yield* Effect.all([
+            const [skills, env, instructions, mcpInstructions, promptMessages] = yield* Effect.all([
               sys.skills(agent),
               sys.environment(model),
               instruction.system().pipe(Effect.orDie),
               sys.mcp(agent, session.permission),
-              MessageV2.toModelMessagesEffect(msgs, model),
+              appendOnlyModelMessages({ snapshot: promptSnapshot, messages: msgs, model }),
             ])
+            promptSnapshot = promptMessages.snapshot
             const system = [
               ...env,
               ...instructions,
@@ -1274,10 +1317,11 @@ const layer = Layer.effect(
               agent,
               permission: session.permission,
               sessionID,
+              cacheRootID,
               parentSessionID: session.parentID,
               system,
               messages: [
-                ...modelMsgs,
+                ...promptMessages.modelMessages,
                 ...(isLastStep ? [{ role: "assistant" as const, content: MAX_STEPS_PROMPT }] : []),
               ],
               tools,
@@ -1325,6 +1369,7 @@ const layer = Layer.effect(
                 auto: true,
                 overflow: !handle.message.finish,
               })
+              promptSnapshot = undefined
             }
             return "continue" as const
           }).pipe(

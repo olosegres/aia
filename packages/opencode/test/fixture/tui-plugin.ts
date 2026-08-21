@@ -37,6 +37,7 @@ function themeCurrent(): HostPluginApi["theme"]["current"] {
     info: g,
     text: c,
     textMuted: b,
+    toolOutputText: c,
     selectedListItemText: h,
     background: h,
     backgroundPanel: h,
