@@ -51,12 +51,30 @@ describe("SessionV2.create", () => {
   it.effect("creates a fresh projected session when the ID is omitted", () =>
     Effect.gen(function* () {
       const session = yield* SessionV2.Service
+      const store = yield* SessionStore.Service
+      const { db } = yield* Database.Service
 
       const first = yield* session.create({ location })
       const second = yield* session.create({ location })
 
       expect(second.id).not.toBe(first.id)
       expect(yield* session.list()).toHaveLength(2)
+      expect(yield* store.cacheRootID(first.id)).toBe(first.id)
+      expect(
+        yield* db
+          .select({ cacheRootID: SessionTable.cache_root_id })
+          .from(SessionTable)
+          .where(eq(SessionTable.id, first.id))
+          .get(),
+      ).toEqual({ cacheRootID: first.id })
+
+      yield* db
+        .update(SessionTable)
+        .set({ cache_root_id: null })
+        .where(eq(SessionTable.id, first.id))
+        .run()
+        .pipe(Effect.orDie)
+      expect(yield* store.cacheRootID(first.id)).toBe(first.id)
     }),
   )
 
@@ -143,8 +161,17 @@ describe("SessionV2.create", () => {
     Effect.gen(function* () {
       const session = yield* SessionV2.Service
       const events = yield* EventV2.Service
+      const store = yield* SessionStore.Service
+      const { db } = yield* Database.Service
       const input = { id, location }
       const created = yield* session.create(input)
+      const cacheRootID = SessionV2.ID.make("ses_shared_cache_root")
+      yield* db
+        .update(SessionTable)
+        .set({ cache_root_id: cacheRootID })
+        .where(eq(SessionTable.id, id))
+        .run()
+        .pipe(Effect.orDie)
 
       yield* events.publish(SessionV1.Event.Updated, {
         sessionID: id,
@@ -161,6 +188,7 @@ describe("SessionV2.create", () => {
       })
 
       expect(yield* session.create(input)).toMatchObject({ id, agent: "build" })
+      expect(yield* store.cacheRootID(id)).toBe(cacheRootID)
     }),
   )
 

@@ -215,7 +215,7 @@ const layer = Layer.effectDiscard(
       Effect.gen(function* () {
         const stored = yield* db
           .insert(SessionTable)
-          .values(sessionRow(event.data.info))
+          .values({ ...sessionRow(event.data.info), cache_root_id: event.data.info.id })
           .onConflictDoNothing()
           .returning({ sessionID: SessionTable.id })
           .get()

@@ -44,6 +44,7 @@ import { RuntimeFlags } from "@/effect/runtime-flags"
 import { ProviderV2 } from "@opencode-ai/core/provider"
 import { ModelV2 } from "@opencode-ai/core/model"
 import { SessionMessage } from "@opencode-ai/schema/session-message"
+import { SessionCache } from "@opencode-ai/core/session/cache"
 
 const parentTitlePrefix = "New session - "
 const childTitlePrefix = "Child session - "
@@ -425,6 +426,7 @@ export interface Interface {
   readonly fork: (input: { sessionID: SessionID; messageID?: MessageID }) => Effect.Effect<Info, NotFound>
   readonly touch: (sessionID: SessionID) => Effect.Effect<void>
   readonly get: (id: SessionID) => Effect.Effect<Info, NotFound>
+  readonly cacheRootID: (sessionID: SessionID) => Effect.Effect<SessionID, NotFound>
   readonly setTitle: (input: { sessionID: SessionID; title: string }) => Effect.Effect<void>
   readonly setArchived: (input: { sessionID: SessionID; time?: number }) => Effect.Effect<void>
   readonly setMetadata: (input: typeof SetMetadataInput.Type) => Effect.Effect<void>
@@ -507,6 +509,7 @@ const layer: Layer.Layer<
       path?: string
       metadata?: typeof Metadata.Type
       permission?: PermissionV1.Ruleset
+      cacheRootID?: SessionID
     }) {
       const ctx = yield* InstanceState.context
       const result: Info = {
@@ -531,8 +534,23 @@ const layer: Layer.Layer<
         },
       }
       yield* Effect.logInfo("created", result)
+      const cacheRootID = input.cacheRootID
 
-      yield* events.publish(SessionV1.Event.Created, { sessionID: result.id, info: result })
+      yield* events.publish(
+        SessionV1.Event.Created,
+        { sessionID: result.id, info: result },
+        cacheRootID === undefined
+          ? undefined
+          : {
+              commit: () =>
+                db
+                  .update(SessionTable)
+                  .set({ cache_root_id: cacheRootID })
+                  .where(eq(SessionTable.id, result.id))
+                  .run()
+                  .pipe(Effect.orDie),
+            },
+      )
 
       return result
     })
@@ -541,6 +559,12 @@ const layer: Layer.Layer<
       const row = yield* db.select().from(SessionTable).where(eq(SessionTable.id, id)).get().pipe(Effect.orDie)
       if (!row) return yield* Effect.fail(new NotFoundError({ message: `Session not found: ${id}` }))
       return fromRow(row)
+    })
+
+    const cacheRootID = Effect.fn("Session.cacheRootID")(function* (sessionID: SessionID) {
+      const rootID = yield* SessionCache.findRootID(db, sessionID)
+      if (!rootID) return yield* Effect.fail(new NotFoundError({ message: `Session not found: ${sessionID}` }))
+      return rootID
     })
 
     const list = Effect.fn("Session.list")(function* (input?: ListInput) {
@@ -691,6 +715,7 @@ const layer: Layer.Layer<
     const fork = Effect.fn("Session.fork")(function* (input: { sessionID: SessionID; messageID?: MessageID }) {
       const ctx = yield* InstanceState.context
       const original = yield* get(input.sessionID)
+      const rootID = yield* cacheRootID(input.sessionID)
       const title = getForkedTitle(original.title)
       const session = yield* createNext({
         directory: ctx.directory,
@@ -698,6 +723,7 @@ const layer: Layer.Layer<
         workspaceID: original.workspaceID,
         title,
         metadata: structuredClone(original.metadata),
+        cacheRootID: rootID,
       })
       const msgs = yield* messages({ sessionID: input.sessionID })
       const idMap = new Map<string, MessageID>()
@@ -910,6 +936,7 @@ const layer: Layer.Layer<
       fork,
       touch,
       get,
+      cacheRootID,
       setTitle,
       setArchived,
       setMetadata,

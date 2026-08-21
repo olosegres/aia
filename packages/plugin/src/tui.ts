@@ -310,6 +310,7 @@ export type TuiThemeCurrent = {
   readonly info: RGBA
   readonly text: RGBA
   readonly textMuted: RGBA
+  readonly toolOutputText: RGBA
   readonly selectedListItemText: RGBA
   readonly background: RGBA
   readonly backgroundPanel: RGBA

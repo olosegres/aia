@@ -442,7 +442,8 @@ export function Session() {
   const local = useLocal()
 
   const statusIndicatorDef = createMemo(() => {
-    const color = local.agent.color(local.agent.current().name)
+    const current = local.agent.current()
+    const color = current ? local.agent.color(current.name) : theme.primary
     const style = kv.get("indicator_style", "pulsatingCircle") as "pulsatingCircle" | "blocks" | "diamonds"
     if (style === "pulsatingCircle") {
       return {
