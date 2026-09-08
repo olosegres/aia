@@ -887,7 +887,12 @@ const layer = Layer.effect(
                   offset = Math.max(start, 1)
                   if (end) limit = end - (offset - 1)
                 }
-                const args = { filePath: filepath, offset, limit }
+                const args = {
+                  filePath: filepath,
+                  intent: "Read the user-attached file as context for their request",
+                  offset,
+                  limit,
+                }
                 const pieces: Draft<SessionV1.Part>[] = [
                   {
                     messageID: info.id,
@@ -943,7 +948,10 @@ const layer = Layer.effect(
               }
 
               if (mime === "application/x-directory") {
-                const args = { filePath: filepath }
+                const args = {
+                  filePath: filepath,
+                  intent: "List the user-attached directory as context for their request",
+                }
                 const exit = yield* execRead(args).pipe(Effect.exit)
                 if (Exit.isFailure(exit)) {
                   const error = Cause.squash(exit.cause)
@@ -1273,6 +1281,8 @@ const layer = Layer.effect(
               bypassAgentCheck,
               messages: msgs,
               promptOps,
+              provider,
+              llm,
             }).pipe(
               Effect.provideService(Plugin.Service, plugin),
               Effect.provideService(Permission.Service, permission),

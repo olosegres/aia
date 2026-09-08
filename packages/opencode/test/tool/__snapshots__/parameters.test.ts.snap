@@ -261,6 +261,14 @@ exports[`tool parameters JSON Schema (wire shape) read 1`] = `
       "description": "The absolute path to the file or directory to read",
       "type": "string",
     },
+    "force_original": {
+      "description": "Disable contextual summarization and return exact source text. For a large file, also pass offset and limit.",
+      "type": "boolean",
+    },
+    "intent": {
+      "description": "A concise explanation of what you are trying to find, learn, or verify in this file",
+      "type": "string",
+    },
     "limit": {
       "description": "The maximum number of lines to read (defaults to 2000)",
       "maximum": 9007199254740991,
@@ -276,6 +284,7 @@ exports[`tool parameters JSON Schema (wire shape) read 1`] = `
   },
   "required": [
     "filePath",
+    "intent",
   ],
   "type": "object",
 }
@@ -387,6 +396,10 @@ exports[`tool parameters JSON Schema (wire shape) webfetch 1`] = `
       ],
       "type": "string",
     },
+    "intent": {
+      "description": "A concise explanation of what you are trying to find, learn, or verify from this URL",
+      "type": "string",
+    },
     "timeout": {
       "description": "Optional timeout in seconds (max 120)",
       "type": "number",
@@ -398,6 +411,7 @@ exports[`tool parameters JSON Schema (wire shape) webfetch 1`] = `
   },
   "required": [
     "url",
+    "intent",
   ],
   "type": "object",
 }

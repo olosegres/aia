@@ -23,6 +23,8 @@ import { ProviderV2 } from "@opencode-ai/core/provider"
 import { ModelV2 } from "@opencode-ai/core/model"
 import { isRecord } from "@/util/record"
 import { RuntimeFlags } from "@/effect/runtime-flags"
+import { ToolResultSummary } from "./tool-result-summary"
+import { LLM } from "./llm"
 
 const MCP_RESOURCE_TOOLS = {
   list: "list_mcp_resources",
@@ -46,6 +48,8 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
   bypassAgentCheck: boolean
   messages: SessionV1.WithParts[]
   promptOps: TaskPromptOps
+  provider: Provider.Interface
+  llm: LLM.Interface
 }) {
   const tools: Record<string, AITool> = {}
   const run = yield* EffectBridge.make()
@@ -55,13 +59,29 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
   const mcp = yield* MCP.Service
   const truncate = yield* Truncate.Service
   const flags = yield* RuntimeFlags.Service
+  const user = input.messages.findLast(
+    (message): message is SessionV1.WithParts & { info: SessionV1.User } => message.info.role === "user",
+  )?.info
+  const summarizeToolOutput = user
+    ? yield* ToolResultSummary.make({
+        model: input.model,
+        user,
+        provider: input.provider,
+        llm: input.llm,
+      })
+    : undefined
 
   const context = (args: Record<string, unknown>, options: ToolExecutionOptions): Tool.Context => ({
     sessionID: input.session.id,
     abort: options.abortSignal!,
     messageID: input.processor.message.id,
     callID: options.toolCallId,
-    extra: { model: input.model, bypassAgentCheck: input.bypassAgentCheck, promptOps: input.promptOps },
+    extra: {
+      model: input.model,
+      bypassAgentCheck: input.bypassAgentCheck,
+      promptOps: input.promptOps,
+      summarizeToolOutput,
+    },
     agent: input.agent.name,
     messages: input.messages,
     metadata: (val) =>

@@ -5,6 +5,7 @@ import type { JSONSchema7 } from "@ai-sdk/provider"
 import type { MessageV2 } from "../session/message-v2"
 import type { Permission } from "../permission"
 import type { SessionID, MessageID } from "../session/schema"
+import type { ContextualSummary } from "./contextual-summary"
 import * as Truncate from "./truncate"
 import { Agent } from "@/agent/agent"
 
@@ -39,7 +40,7 @@ export type Context<M extends Metadata = Metadata> = {
   agent: string
   abort: AbortSignal
   callID?: string
-  extra?: { [key: string]: unknown }
+  extra?: { summarizeToolOutput?: ContextualSummary.Handler; [key: string]: unknown }
   messages: SessionV1.WithParts[]
   metadata(input: { title?: string; metadata?: M }): Effect.Effect<void>
   ask(input: Omit<PermissionV1.Request, "id" | "sessionID" | "tool">): Effect.Effect<void>
@@ -100,7 +101,6 @@ function wrap<Parameters extends Schema.Decoder<unknown>, Result extends Metadat
   id: string,
   init: Init<Parameters, Result>,
   truncate: Truncate.Interface,
-  agents: Agent.Interface,
 ) {
   return () =>
     Effect.gen(function* () {
@@ -128,17 +128,16 @@ function wrap<Parameters extends Schema.Decoder<unknown>, Result extends Metadat
             ),
           )
           const result = yield* execute(decoded as Schema.Schema.Type<Parameters>, ctx)
-          if (result.metadata.truncated !== undefined) {
+          if (result.metadata.truncated === true && typeof result.metadata.outputPath === "string") {
             return result
           }
-          const agent = yield* agents.get(ctx.agent)
-          const truncated = yield* truncate.output(result.output, {}, agent)
+          const truncated = yield* truncate.output(result.output)
           return {
             ...result,
             output: truncated.content,
             metadata: {
               ...result.metadata,
-              truncated: truncated.truncated,
+              truncated: result.metadata.truncated === true || truncated.truncated,
               ...(truncated.truncated && { outputPath: truncated.outputPath }),
             },
           }
@@ -156,13 +155,12 @@ export function define<
 >(
   id: ID,
   init: Effect.Effect<Init<Parameters, Result>, never, R>,
-): Effect.Effect<Info<Parameters, Result>, never, R | Truncate.Service | Agent.Service> & { id: ID } {
+): Effect.Effect<Info<Parameters, Result>, never, R | Truncate.Service> & { id: ID } {
   return Object.assign(
     Effect.gen(function* () {
       const resolved = yield* init
       const truncate = yield* Truncate.Service
-      const agents = yield* Agent.Service
-      return { id, init: wrap(id, resolved, truncate, agents) }
+      return { id, init: wrap(id, resolved, truncate) }
     }),
     { id },
   )

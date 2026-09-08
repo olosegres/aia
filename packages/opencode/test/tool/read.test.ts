@@ -18,6 +18,7 @@ import { ReadTool } from "../../src/tool/read"
 import { Truncate } from "@/tool/truncate"
 import { Tool } from "@/tool/tool"
 import { Filesystem } from "@/util/filesystem"
+import type { ContextualSummary } from "@/tool/contextual-summary"
 import {
   disposeAllInstances,
   provideInstance,
@@ -64,17 +65,19 @@ const init = Effect.fn("ReadToolTest.init")(function* () {
   return yield* info.init()
 })
 
+type ReadArgs = Omit<Tool.InferParameters<typeof ReadTool>, "intent"> & { intent?: string }
+
 const run = Effect.fn("ReadToolTest.run")(function* (
-  args: Tool.InferParameters<typeof ReadTool>,
+  args: ReadArgs,
   next: Tool.Context = ctx,
 ) {
   const tool = yield* init()
-  return yield* tool.execute(args, next)
+  return yield* tool.execute({ ...args, intent: args.intent ?? "test read intent" }, next)
 })
 
 const exec = Effect.fn("ReadToolTest.exec")(function* (
   dir: string,
-  args: Tool.InferParameters<typeof ReadTool>,
+  args: ReadArgs,
   next: Tool.Context = ctx,
 ) {
   return yield* provideInstance(dir)(run(args, next))
@@ -82,7 +85,7 @@ const exec = Effect.fn("ReadToolTest.exec")(function* (
 
 const fail = Effect.fn("ReadToolTest.fail")(function* (
   dir: string,
-  args: Tool.InferParameters<typeof ReadTool>,
+  args: ReadArgs,
   next: Tool.Context = ctx,
 ) {
   const exit = yield* exec(dir, args, next).pipe(Effect.exit)
@@ -313,7 +316,19 @@ describe("tool.read env file permissions", () => {
 })
 
 describe("tool.read truncation", () => {
-  it.instance("truncates large file by bytes and sets truncated metadata", () =>
+  it.instance("rejects a blank intent", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      const filepath = path.join(test.directory, "small.txt")
+      yield* put(filepath, "hello world")
+
+      const error = yield* fail(test.directory, { filePath: filepath, intent: "   " })
+
+      expect(error.message).toContain("intent")
+    }),
+  )
+
+  it.instance("returns exact continuation guidance for a large structured file", () =>
     Effect.gen(function* () {
       const test = yield* TestInstance
       const base = yield* load(path.join(FIXTURES_DIR, "models-api.json"))
@@ -323,12 +338,14 @@ describe("tool.read truncation", () => {
 
       const result = yield* run({ filePath: path.join(test.directory, "large.json") })
       expect(result.metadata.truncated).toBe(true)
-      expect(result.output).toContain("Output capped at")
-      expect(result.output).toContain("Use offset=")
+      expect(result.output).toContain("[Large file:")
+      expect(result.output).toContain("Use Grep")
+      expect(result.output).toContain('"force_original": true')
+      expect(result.output).toContain('"offset": 1')
     }),
   )
 
-  it.instance("stops streaming after the byte cap", () =>
+  it.instance("does not stream a large file before returning continuation guidance", () =>
     Effect.gen(function* () {
       const test = yield* TestInstance
       const filepath = path.join(test.directory, "huge.txt")
@@ -355,8 +372,8 @@ describe("tool.read truncation", () => {
       )
 
       expect(result.metadata.truncated).toBe(true)
-      expect(result.output).toContain("Output capped at")
-      expect(counter.bytes).toBeLessThan(Buffer.byteLength(content, "utf-8") / 2)
+      expect(result.output).toContain("[Large file:")
+      expect(counter.bytes).toBe(0)
     }),
   )
 
@@ -393,6 +410,71 @@ describe("tool.read truncation", () => {
         totalLines: 1,
         truncated: false,
       })
+    }),
+  )
+
+  it.instance("summarizes a large prose file with the requested intent and preserves the original path", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      const filepath = path.join(test.directory, "large.md")
+      const content = `${"Relevant documentation paragraph.\n".repeat(900)}Exact quota: 42.`
+      yield* put(filepath, content)
+      const requests: ContextualSummary.Request[] = []
+      const result = yield* run(
+        { filePath: filepath, intent: "Find the exact quota" },
+        {
+          ...ctx,
+          extra: {
+            summarizeToolOutput(request) {
+              requests.push(request)
+              return Effect.succeed({ text: "The exact quota is 42.", model: "test/small" })
+            },
+          },
+        },
+      )
+
+      expect(requests).toHaveLength(1)
+      expect(requests[0]?.intent).toBe("Find the exact quota")
+      expect(requests[0]?.content).toBe(content)
+      expect(result.output).toContain("The exact quota is 42.")
+      expect(result.output).toContain("[CONTEXTUAL SUMMARY OF LARGE RESULT]")
+      expect(result.output).toContain(`The exact original tool content is preserved at: ${filepath}`)
+      expect(result.output).toContain('"force_original": true')
+      expect(result.metadata.outputPath).toBe(filepath)
+      expect(result.metadata.summaryModel).toBe("test/small")
+    }),
+  )
+
+  it.instance("force_original with a range returns exact large-file lines without summarizing", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      const filepath = path.join(test.directory, "large.txt")
+      const content = Array.from({ length: 1_000 }, (_, index) => `line ${index + 1}`).join("\n")
+      yield* put(filepath, content.repeat(4))
+      const calls = { count: 0 }
+      const result = yield* run(
+        {
+          filePath: filepath,
+          intent: "Verify lines 20 through 22",
+          force_original: true,
+          offset: 20,
+          limit: 3,
+        },
+        {
+          ...ctx,
+          extra: {
+            summarizeToolOutput() {
+              calls.count++
+              return Effect.succeed({ text: "wrong", model: "test/small" })
+            },
+          },
+        },
+      )
+
+      expect(calls.count).toBe(0)
+      expect(result.output).toContain("20: line 20")
+      expect(result.output).toContain("22: line 22")
+      expect(result.output).not.toContain("CONTEXTUAL SUMMARY")
     }),
   )
 

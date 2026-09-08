@@ -215,11 +215,13 @@ describe("tool parameters", () => {
   })
 
   describe("read", () => {
-    test("accepts filePath-only", () => {
-      expect(parse(Read, { filePath: "/a" }).filePath).toBe("/a")
+    test("requires intent with filePath", () => {
+      expect(parse(Read, { filePath: "/a", intent: "find the answer" }).filePath).toBe("/a")
+      expect(accepts(Read, { filePath: "/a" })).toBe(false)
+      expect(accepts(Read, { filePath: "/a", intent: "   " })).toBe(false)
     })
     test("accepts optional offset + limit", () => {
-      const parsed = parse(Read, { filePath: "/a", offset: 10, limit: 100 })
+      const parsed = parse(Read, { filePath: "/a", intent: "verify exact text", offset: 10, limit: 100 })
       expect(parsed.offset).toBe(10)
       expect(parsed.limit).toBe(100)
     })
@@ -262,14 +264,20 @@ describe("tool parameters", () => {
 
   describe("webfetch", () => {
     test("defaults omitted format to markdown", () => {
-      expect(parse(WebFetch, { url: "https://example.com" })).toEqual({
+      expect(parse(WebFetch, { url: "https://example.com", intent: "find pricing" })).toEqual({
         url: "https://example.com",
+        intent: "find pricing",
         format: "markdown",
       })
-      expect(parse(WebFetch, { url: "https://example.com", format: undefined })).toEqual({
+      expect(parse(WebFetch, { url: "https://example.com", intent: "find pricing", format: undefined })).toEqual({
         url: "https://example.com",
+        intent: "find pricing",
         format: "markdown",
       })
+    })
+    test("rejects missing intent", () => {
+      expect(accepts(WebFetch, { url: "https://example.com" })).toBe(false)
+      expect(accepts(WebFetch, { url: "https://example.com", intent: "   " })).toBe(false)
     })
   })
 

@@ -1,7 +1,7 @@
 import { describe, expect } from "bun:test"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { httpClient } from "@opencode-ai/core/effect/app-node-platform"
-import { Effect, Layer } from "effect"
+import { Cause, Effect, Exit, Layer } from "effect"
 import { FetchHttpClient, HttpClient } from "effect/unstable/http"
 import { Agent } from "../../src/agent/agent"
 import { Truncate } from "@/tool/truncate"
@@ -9,6 +9,7 @@ import { WebFetchTool } from "../../src/tool/webfetch"
 import { SessionID, MessageID } from "../../src/session/schema"
 import { Tool } from "@/tool/tool"
 import { testEffect } from "../lib/effect"
+import type { ContextualSummary } from "@/tool/contextual-summary"
 
 const it = testEffect(
   LayerNode.compile(LayerNode.group([httpClient, Truncate.node, Agent.node]), [
@@ -37,13 +38,28 @@ const withFetch = <A, E, R>(
     (server) => Effect.sync(() => server.stop(true)),
   )
 
-const exec = Effect.fn("WebFetchToolTest.exec")(function* (args: Tool.InferParameters<typeof WebFetchTool>) {
+type WebFetchArgs = Omit<Tool.InferParameters<typeof WebFetchTool>, "intent"> & { intent?: string }
+
+const exec = Effect.fn("WebFetchToolTest.exec")(function* (args: WebFetchArgs, next: Tool.Context = ctx) {
   const info = yield* WebFetchTool
   const tool = yield* info.init()
-  return yield* tool.execute(args, ctx)
+  return yield* tool.execute({ ...args, intent: args.intent ?? "test webfetch intent" }, next)
 })
 
 describe("tool.webfetch", () => {
+  it.instance("rejects a blank intent", () =>
+    withFetch(
+      () => new Response("hello", { status: 200, headers: { "content-type": "text/plain" } }),
+      (url) =>
+        Effect.gen(function* () {
+          const exit = yield* exec({ url: url.toString(), intent: "   ", format: "text" }).pipe(Effect.exit)
+          expect(Exit.isFailure(exit)).toBe(true)
+          if (!Exit.isFailure(exit)) return
+          expect(Cause.pretty(exit.cause)).toContain("intent")
+        }),
+    ),
+  )
+
   it.instance("returns image responses as file attachments", () =>
     Effect.gen(function* () {
       const bytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])
@@ -113,6 +129,55 @@ describe("tool.webfetch", () => {
           const result = yield* exec({ url: new URL("/page.html", url).toString(), format: "text" })
           expect(result.output).toBe("Hello world")
           expect(result.attachments).toBeUndefined()
+        }),
+    ),
+  )
+
+  it.instance("summarizes large HTML without page chrome and preserves the full normalized original", () =>
+    withFetch(
+      () =>
+        new Response(
+          `<html><body><nav>Navigation noise <a href="/deeper">Deeper docs</a></nav><main>${"Relevant pricing evidence. ".repeat(1_200)}</main><footer>Cookie noise</footer></body></html>`,
+          { status: 200, headers: { "content-type": "text/html; charset=utf-8" } },
+        ),
+      (url) =>
+        Effect.gen(function* () {
+          const requests: ContextualSummary.Request[] = []
+          const result = yield* exec(
+            {
+              url: new URL("/pricing", url).toString(),
+              intent: "Find the relevant pricing evidence",
+              format: "html",
+            },
+            {
+              ...ctx,
+              extra: {
+                summarizeToolOutput(request) {
+                  requests.push(request)
+                  return Effect.succeed({ text: "Relevant pricing evidence was found.", model: "test/small" })
+                },
+              },
+            },
+          )
+
+          expect(requests).toHaveLength(1)
+          expect(requests[0]?.content).toContain("Relevant pricing evidence")
+          expect(requests[0]?.content).not.toContain("Navigation noise")
+          expect(requests[0]?.content).not.toContain("Cookie noise")
+          expect(requests[0]?.links).toContain(`- Deeper docs: ${new URL("/deeper", url).toString()}`)
+          expect(result.output).toContain("Relevant pricing evidence was found.")
+          expect(result.output).toContain("[CONTEXTUAL SUMMARY OF LARGE RESULT]")
+          expect(result.output).toContain('"force_original": true')
+          expect("summaryModel" in result.metadata ? result.metadata.summaryModel : undefined).toBe("test/small")
+          if (!("outputPath" in result.metadata) || typeof result.metadata.outputPath !== "string") {
+            throw new Error("expected persisted original path")
+          }
+          const originalPath = result.metadata.outputPath
+          const original = yield* Effect.promise(() => Bun.file(originalPath).text())
+          expect(original).toContain("Navigation noise")
+          expect(original).toContain("Cookie noise")
+          expect(original).not.toContain("<html")
+          expect(original).not.toContain("<nav")
         }),
     ),
   )
