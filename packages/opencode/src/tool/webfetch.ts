@@ -5,13 +5,20 @@ import * as Tool from "./tool"
 import TurndownService from "turndown"
 import DESCRIPTION from "./webfetch.txt"
 import { isImageAttachment } from "@/util/media"
+import { Truncate } from "./truncate"
+import { ContextualSummary } from "./contextual-summary"
 
 const MAX_RESPONSE_SIZE = 5 * 1024 * 1024 // 5MB
 const DEFAULT_TIMEOUT = 30 * 1000 // 30 seconds
 const MAX_TIMEOUT = 120 * 1000 // 2 minutes
+const MAX_SUMMARY_LINKS = 300
+const MAX_SUMMARY_LINK_URL_LENGTH = 2_048
 
 export const Parameters = Schema.Struct({
   url: Schema.String.annotate({ description: "The URL to fetch content from" }),
+  intent: Schema.String.annotate({
+    description: "A concise explanation of what you are trying to find, learn, or verify from this URL",
+  }).pipe(Schema.check(Schema.makeFilter((value) => value.trim().length > 0))),
   format: Schema.Literals(["text", "markdown", "html"])
     .annotate({
       description: "The format to return the content in (text, markdown, or html). Defaults to markdown.",
@@ -26,6 +33,48 @@ export const WebFetchTool = Tool.define(
   Effect.gen(function* () {
     const http = yield* HttpClient.HttpClient
     const httpOk = HttpClient.filterStatusOk(http)
+    const truncate = yield* Truncate.Service
+
+    const finish = Effect.fn("WebFetchTool.finish")(function* (input: {
+      output: string
+      originalContent?: string
+      summaryContent: string
+      links: string[]
+      title: string
+      params: Schema.Schema.Type<typeof Parameters>
+      ctx: Tool.Context
+    }) {
+      if (!ContextualSummary.checkIsLargeResult(input.output)) {
+        return { output: input.output, title: input.title, metadata: {} }
+      }
+      const summarize = input.ctx.extra?.summarizeToolOutput
+      if (!summarize) return { output: input.output, title: input.title, metadata: {} }
+      const summary = yield* summarize({
+        intent: input.params.intent,
+        content: input.summaryContent,
+        source: input.params.url,
+        kind: "webfetch",
+        links: input.links,
+      })
+      if (!summary) return { output: input.output, title: input.title, metadata: {} }
+      const originalContent = input.originalContent ?? input.output
+      const outputPath = yield* truncate.write(originalContent)
+      return {
+        output: ContextualSummary.buildSummaryOutput({
+          summary,
+          intent: input.params.intent,
+          originalPath: outputPath,
+          originalContent,
+        }),
+        title: input.title,
+        metadata: {
+          summarized: true,
+          summaryModel: summary.model,
+          truncated: true,
+          outputPath,
+        },
+      }
+    })
 
     return {
       description: DESCRIPTION,
@@ -125,30 +174,46 @@ export const WebFetchTool = Tool.define(
 
           const content = new TextDecoder().decode(arrayBuffer)
 
+          const isHTML = contentType.includes("text/html")
+          const links = isHTML ? extractLinksFromHTML(content, params.url) : []
+          const normalizedMarkdown = isHTML ? convertHTMLToMarkdown(content) : content
+          const summaryContent = isHTML ? convertHTMLToSummaryMarkdown(content) : content
+
           // Handle content based on requested format and actual content type
           switch (params.format) {
             case "markdown":
-              if (contentType.includes("text/html")) {
-                const markdown = convertHTMLToMarkdown(content)
-                return {
-                  output: markdown,
+              if (isHTML) {
+                return yield* finish({
+                  output: normalizedMarkdown,
+                  summaryContent,
+                  links,
                   title,
-                  metadata: {},
-                }
+                  params,
+                  ctx,
+                })
               }
-              return { output: content, title, metadata: {} }
+              return yield* finish({ output: content, summaryContent: content, links, title, params, ctx })
 
             case "text":
-              if (contentType.includes("text/html")) {
-                return { output: extractTextFromHTML(content), title, metadata: {} }
+              if (isHTML) {
+                const text = extractTextFromHTML(content)
+                return yield* finish({ output: text, summaryContent, links, title, params, ctx })
               }
-              return { output: content, title, metadata: {} }
+              return yield* finish({ output: content, summaryContent: content, links, title, params, ctx })
 
             case "html":
-              return { output: content, title, metadata: {} }
+              return yield* finish({
+                output: content,
+                originalContent: normalizedMarkdown,
+                summaryContent,
+                links,
+                title,
+                params,
+                ctx,
+              })
 
             default:
-              return { output: content, title, metadata: {} }
+              return yield* finish({ output: content, summaryContent: content, links, title, params, ctx })
           }
         }).pipe(Effect.orDie),
     }
@@ -189,4 +254,63 @@ function convertHTMLToMarkdown(html: string): string {
   })
   turndownService.remove(["script", "style", "meta", "link"])
   return turndownService.turndown(html)
+}
+
+function convertHTMLToSummaryMarkdown(html: string): string {
+  const turndownService = new TurndownService({
+    headingStyle: "atx",
+    hr: "---",
+    bulletListMarker: "-",
+    codeBlockStyle: "fenced",
+    emDelimiter: "*",
+  })
+  turndownService.remove([
+    "script",
+    "style",
+    "meta",
+    "link",
+    "nav",
+    "footer",
+    "header",
+    "aside",
+    "form",
+    "button",
+  ])
+  return turndownService.turndown(html)
+}
+
+function extractLinksFromHTML(html: string, baseURL: string) {
+  const links: string[] = []
+  const seen = new Set<string>()
+  let href: string | undefined
+  let label = ""
+  const parser = new Parser({
+    onopentag(name, attributes) {
+      if (name !== "a" || href) return
+      href = attributes.href
+      label = ""
+    },
+    ontext(text) {
+      if (href) label += text
+    },
+    onclosetag(name) {
+      if (name !== "a" || !href) return
+      try {
+        const url = new URL(href, baseURL)
+        if ((url.protocol === "http:" || url.protocol === "https:") && !seen.has(url.href)) {
+          seen.add(url.href)
+          const text = label.replace(/\s+/g, " ").trim().slice(0, 200)
+          const normalizedURL = url.href.slice(0, MAX_SUMMARY_LINK_URL_LENGTH)
+          links.push(text ? `- ${text}: ${normalizedURL}` : `- ${normalizedURL}`)
+        }
+      } catch {
+        // Ignore malformed links; the fetched content remains available verbatim.
+      }
+      href = undefined
+      label = ""
+    },
+  })
+  parser.write(html)
+  parser.end()
+  return links.slice(0, MAX_SUMMARY_LINKS)
 }

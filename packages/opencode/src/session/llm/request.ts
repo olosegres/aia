@@ -28,6 +28,8 @@ type PrepareInput = {
   readonly system: string[]
   readonly messages: ModelMessage[]
   readonly small?: boolean
+  readonly isolated?: boolean
+  readonly maxOutputTokens?: number
   readonly tools: Record<string, Tool>
   readonly provider: Provider.Info
   readonly auth: Auth.Info | undefined
@@ -51,21 +53,36 @@ export type Prepared = {
   readonly headers: Record<string, string>
 }
 
+export function buildSystem(input: {
+  isolated?: boolean
+  system: string[]
+  agent: Agent.Info
+  model: Provider.Model
+  user: SessionV1.User
+}) {
+  if (input.isolated) return input.system.filter((item) => item.length > 0)
+  return [
+    [...(input.agent.prompt ? [input.agent.prompt] : SystemPrompt.provider(input.model))]
+      .filter((item) => item)
+      .join("\n"),
+    [...input.system, ...(input.user.system ? [input.user.system] : [])].filter((item) => item).join("\n"),
+  ].filter((item) => item)
+}
+
 const mergeOptions = (target: Record<string, any>, source: Record<string, any> | undefined): Record<string, any> =>
   mergeDeep(target, source ?? {}) as Record<string, any>
 
 export const prepare = Effect.fn("LLMRequestPrep.prepare")(function* (input: PrepareInput) {
   const isOpenaiOauth = input.provider.id === "openai" && input.auth?.type === "oauth"
-  const system = [
-    [...(input.agent.prompt ? [input.agent.prompt] : SystemPrompt.provider(input.model))].filter((x) => x).join("\n"),
-    [...input.system, ...(input.user.system ? [input.user.system] : [])].filter((x) => x).join("\n"),
-  ].filter((x) => x)
+  const system = buildSystem(input)
 
-  yield* input.plugin.trigger(
-    "experimental.chat.system.transform",
-    { sessionID: input.sessionID, model: input.model },
-    { system },
-  )
+  if (!input.isolated) {
+    yield* input.plugin.trigger(
+      "experimental.chat.system.transform",
+      { sessionID: input.sessionID, model: input.model },
+      { system },
+    )
+  }
   if (system.length > 2) {
     const header = system[0]!
     const rest = system.slice(1)
@@ -74,17 +91,20 @@ export const prepare = Effect.fn("LLMRequestPrep.prepare")(function* (input: Pre
   }
 
   const variant =
-    !input.small && input.model.variants && input.user.model.variant
+    !input.isolated && !input.small && input.model.variants && input.user.model.variant
       ? input.model.variants[input.user.model.variant]
       : {}
-  const base = input.small
+  const base =
+    input.small || input.isolated
       ? ProviderTransform.smallOptions(input.model)
       : ProviderTransform.options({
           model: input.model,
           cacheRootID: input.cacheRootID ?? input.sessionID,
           providerOptions: input.provider.options,
         })
-  const options = mergeOptions(mergeOptions(mergeOptions(base, input.model.options), input.agent.options), variant)
+  const options = input.isolated
+    ? base
+    : mergeOptions(mergeOptions(mergeOptions(base, input.model.options), input.agent.options), variant)
   if (
     input.model.api.npm === "@ai-sdk/azure" &&
     (input.provider.options.useCompletionUrls || input.model.options.useCompletionUrls || options.useCompletionUrls)
@@ -107,39 +127,51 @@ export const prepare = Effect.fn("LLMRequestPrep.prepare")(function* (input: Pre
           ...input.messages,
         ]
 
-  const params = yield* input.plugin.trigger(
-    "chat.params",
-    {
-      sessionID: input.sessionID,
-      agent: input.agent.name,
-      model: input.model,
-      provider: input.provider,
-      message: input.user,
-    },
-    {
-      temperature: input.model.capabilities.temperature
-        ? (input.agent.temperature ?? ProviderTransform.temperature(input.model))
-        : undefined,
-      topP: input.agent.topP ?? ProviderTransform.topP(input.model),
-      topK: ProviderTransform.topK(input.model),
-      maxOutputTokens: ProviderTransform.maxOutputTokens(input.model, input.flags.outputTokenMax),
-      options,
-    },
-  )
+  const defaultParams = {
+    temperature: input.model.capabilities.temperature
+      ? input.isolated
+        ? 0
+        : (input.agent.temperature ?? ProviderTransform.temperature(input.model))
+      : undefined,
+    topP: input.isolated ? undefined : (input.agent.topP ?? ProviderTransform.topP(input.model)),
+    topK: input.isolated ? undefined : ProviderTransform.topK(input.model),
+    maxOutputTokens: isOpenaiOauth
+      ? undefined
+      : Math.min(
+          input.maxOutputTokens ?? Number.POSITIVE_INFINITY,
+          ProviderTransform.maxOutputTokens(input.model, input.flags.outputTokenMax),
+        ),
+    options,
+  }
+  const params = input.isolated
+    ? defaultParams
+    : yield* input.plugin.trigger(
+        "chat.params",
+        {
+          sessionID: input.sessionID,
+          agent: input.agent.name,
+          model: input.model,
+          provider: input.provider,
+          message: input.user,
+        },
+        defaultParams,
+      )
 
-  const { headers } = yield* input.plugin.trigger(
-    "chat.headers",
-    {
-      sessionID: input.sessionID,
-      agent: input.agent.name,
-      model: input.model,
-      provider: input.provider,
-      message: input.user,
-    },
-    {
-      headers: {},
-    },
-  )
+  const { headers } = input.isolated
+    ? { headers: {} }
+    : yield* input.plugin.trigger(
+        "chat.headers",
+        {
+          sessionID: input.sessionID,
+          agent: input.agent.name,
+          model: input.model,
+          provider: input.provider,
+          message: input.user,
+        },
+        {
+          headers: {},
+        },
+      )
 
   const tools = resolveTools(input)
   // Codex parity: OpenAI Responses-family providers hardcode `strict: false`

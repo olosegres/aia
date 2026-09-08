@@ -9,6 +9,7 @@ import { InstanceState } from "@/effect/instance-state"
 import { assertExternalDirectoryEffect } from "./external-directory"
 import { Instruction } from "../session/instruction"
 import { isPdfAttachment, sniffAttachmentMime } from "@/util/media"
+import { ContextualSummary } from "./contextual-summary"
 
 const DEFAULT_READ_LIMIT = 2000
 const MAX_LINE_LENGTH = 2000
@@ -27,11 +28,18 @@ class ReadStop extends Schema.TaggedErrorClass<ReadStop>()("ReadStop", {}) {}
 // unchanged; purely CLI-facing uses must now send numbers rather than strings.
 export const Parameters = Schema.Struct({
   filePath: Schema.String.annotate({ description: "The absolute path to the file or directory to read" }),
+  intent: Schema.String.annotate({
+    description: "A concise explanation of what you are trying to find, learn, or verify in this file",
+  }).pipe(Schema.check(Schema.makeFilter((value) => value.trim().length > 0))),
   offset: Schema.optional(NonNegativeInt).annotate({
     description: "The line number to start reading from (1-indexed)",
   }),
   limit: Schema.optional(NonNegativeInt).annotate({
     description: "The maximum number of lines to read (defaults to 2000)",
+  }),
+  force_original: Schema.optional(Schema.Boolean).annotate({
+    description:
+      "Disable contextual summarization and return exact source text. For a large file, also pass offset and limit.",
   }),
 })
 
@@ -59,6 +67,9 @@ type Metadata = {
   truncated: boolean
   loaded: string[]
   display?: Display
+  summarized?: boolean
+  summaryModel?: string
+  outputPath?: string
 }
 
 export const ReadTool = Tool.define<
@@ -328,7 +339,69 @@ export const ReadTool = Tool.define<
         return yield* Effect.fail(new Error(`Cannot read binary file: ${filepath}`))
       }
 
-      const file = yield* lines(filepath, { limit: params.limit ?? DEFAULT_READ_LIMIT, offset: params.offset || 1 })
+      const hasRange = params.offset !== undefined || params.limit !== undefined
+      const fileBytes = Number(stat.size)
+      if (!hasRange && ContextualSummary.checkIsLargeResultBytes(fileBytes)) {
+        const summarize = ctx.extra?.summarizeToolOutput
+        if (!params.force_original && ContextualSummary.checkIsProseFile(filepath) && summarize) {
+          if (fileBytes <= ContextualSummary.MAX_SUMMARY_INPUT_BYTES) {
+            const content = yield* fs.readFileString(filepath)
+            const summary = yield* summarize({
+              intent: params.intent,
+              content,
+              source: filepath,
+              kind: "read",
+            })
+            if (summary) {
+              let output = ContextualSummary.buildSummaryOutput({
+                summary,
+                intent: params.intent,
+                originalPath: filepath,
+                originalContent: content,
+              })
+              if (loaded.length > 0) {
+                output += `\n\n<system-reminder>\n${loaded.map((item) => item.content).join("\n\n")}\n</system-reminder>`
+              }
+              return {
+                title,
+                output,
+                metadata: {
+                  preview: summary.text.split("\n").slice(0, 20).join("\n"),
+                  truncated: true,
+                  summarized: true,
+                  summaryModel: summary.model,
+                  outputPath: filepath,
+                  loaded: loaded.map((item) => item.filepath),
+                },
+              }
+            }
+          }
+        }
+
+        let output = ContextualSummary.buildLargeFileGuidance({
+          filePath: filepath,
+          intent: params.intent,
+          bytes: fileBytes,
+        })
+        if (loaded.length > 0) {
+          output += `\n\n<system-reminder>\n${loaded.map((item) => item.content).join("\n\n")}\n</system-reminder>`
+        }
+        return {
+          title,
+          output,
+          metadata: {
+            preview: output,
+            truncated: true,
+            outputPath: filepath,
+            loaded: loaded.map((item) => item.filepath),
+          },
+        }
+      }
+
+      const file = yield* lines(filepath, {
+        limit: params.limit ?? (hasRange ? DEFAULT_READ_LIMIT : Number.MAX_SAFE_INTEGER),
+        offset: params.offset || 1,
+      })
       if (file.count < file.offset && !(file.count === 0 && file.offset === 1)) {
         return yield* Effect.fail(
           new Error(`Offset ${file.offset} is out of range for this file (${file.count} lines)`),

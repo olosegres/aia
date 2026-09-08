@@ -10,6 +10,7 @@ import { Session } from "@/session/session"
 import { MessageID, PartID, SessionID } from "@/session/schema"
 import { SessionProcessor } from "@/session/processor"
 import { SessionTools } from "@/session/tools"
+import { LLM } from "@/session/llm"
 import { Tool } from "@/tool/tool"
 import { ToolRegistry } from "@/tool/registry"
 import { Truncate } from "@/tool/truncate"
@@ -60,6 +61,12 @@ const fakeTruncate = Truncate.Service.of({
   output: (text: string) => Effect.succeed({ content: text, truncated: false }),
   limits: () => Effect.succeed({ maxLines: 2000, maxBytes: 50 * 1024 }),
 } satisfies Truncate.Interface)
+
+// The contextual-summary handler is only built when the turn has a user message,
+// so these doubles are never invoked here (messages is empty); they exist to
+// satisfy the required provider/llm inputs of SessionTools.resolve.
+const fakeProvider = { getSmallModel: () => Effect.succeed(undefined) } as unknown as Provider.Interface
+const fakeLlm = { stream: () => Effect.die("unused in tool resolution test") } as unknown as LLM.Interface
 
 const layer = Layer.mergeAll(
   Layer.succeed(Plugin.Service, fakePlugin),
@@ -143,6 +150,8 @@ it.effect("preserves running tool start time across metadata updates", () =>
       bypassAgentCheck: false,
       messages: [],
       promptOps: {} as never,
+      provider: fakeProvider,
+      llm: fakeLlm,
     })
     const execute = tools.timing.execute
     if (!execute) throw new Error("timing tool is missing execute")

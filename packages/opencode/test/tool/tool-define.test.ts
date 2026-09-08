@@ -11,6 +11,10 @@ const it = testEffect(LayerNode.compile(LayerNode.group([Truncate.node, Agent.no
 
 const params = Schema.Struct({ input: Schema.String })
 
+function getSourceTruncatedMetadata(): { truncated: boolean; outputPath?: string } {
+  return { truncated: true }
+}
+
 function makeCtx(): Tool.Context {
   return {
     sessionID: SessionID.descending(),
@@ -104,6 +108,34 @@ describe("Tool.define", () => {
       yield* execute({ count: "7" }, ctx)
 
       expect(calls).toEqual([{ count: 5 }, { count: 7 }])
+    }),
+  )
+
+  it.effect("persists oversized output when tool metadata only reports source truncation", () =>
+    Effect.gen(function* () {
+      const output = "x".repeat(Truncate.MAX_BYTES + 1)
+      const info = yield* Tool.define(
+        "test-source-truncated",
+        Effect.succeed({
+          description: "test tool",
+          parameters: params,
+          execute() {
+            return Effect.succeed({ title: "test", output, metadata: getSourceTruncatedMetadata() })
+          },
+        }),
+      )
+      const tool = yield* info.init()
+
+      const result = yield* tool.execute({ input: "test" }, makeCtx())
+
+      expect(result.metadata.truncated).toBe(true)
+      expect(result.metadata.outputPath).toBeString()
+      expect(result.output).toContain("Full output saved to:")
+      expect(result.output).not.toBe(output)
+      if (typeof result.metadata.outputPath !== "string") throw new Error("expected persisted output path")
+      const outputPath = result.metadata.outputPath
+      const persisted = yield* Effect.promise(() => Bun.file(outputPath).text())
+      expect(persisted).toBe(output)
     }),
   )
 
